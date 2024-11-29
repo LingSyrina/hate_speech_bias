@@ -173,6 +173,7 @@ if args.same:
             f.write(f"{target},{same}\n")
 
 # Debiasing 
+"""
 if args.hard:
     print("\nPerforming Hard Debiasing...")
     hard_word_vectors = neutralize_and_equalize(
@@ -220,3 +221,4 @@ if args.soft:
         print("\nSoft Debiased Analogies:")
         for score, analogy, _ in softAnalogies[:args.printLimit]:
             print(f"{score:.4f}: {analogy}")
+"""

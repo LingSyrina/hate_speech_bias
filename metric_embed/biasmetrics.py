@@ -9,7 +9,7 @@ import numpy as np
 from scipy.spatial.distance import cosine
 
 from util import write_w2v, load_legacy_w2v, pruneWordVecs
-from biasOps import identify_bias_subspace, neutralize_and_equalize, equalize_and_soften
+# from biasOps import identify_bias_subspace, neutralize_and_equalize, equalize_and_soften
 from evalBias import generateAnalogies
 from loader import load_analogy_templates, load_eval_terms
 
@@ -29,7 +29,7 @@ args = parser.parse_args()
 defSets = load_def_sets(args.vocabPath)
 testTerms = load_test_terms(args.vocabPath)
 analogyTemplates = load_analogy_templates(args.vocabPath, args.mode)
-subspace = identify_bias_subspace(word_vectors, defSets, 1, embedding_dim)
+#subspace = identify_bias_subspace(word_vectors, defSets, 1, embedding_dim)
 neutral_words = []
 for value in analogyTemplates.values():
     neutral_words.extend(value)

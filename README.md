@@ -11,3 +11,5 @@ model.py
 "python model.py --embedder_path [embedder path] --csv_file [data path] --emod [embedder type]"
 
 ### d. Model bias evaluation
+evaluator.py
+"python evaluator.py --model_dir [model directory] --csv_file [data path]

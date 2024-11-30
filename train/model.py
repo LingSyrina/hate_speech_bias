@@ -10,12 +10,107 @@ from tensorflow.keras.layers import Embedding, Bidirectional, LSTM, Dense, Dropo
 from tensorflow.keras.optimizers import Adam, RMSprop
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
 from sklearn.utils.class_weight import compute_class_weight
+from tensorflow.keras.regularizers import l2
+
 import re
+import os
+import json
 from contractions import fix
+import matplotlib.pyplot as plt
+
 
 
 # Load pre-trained embedding
 from util import load_legacy_w2v
+
+
+def split_and_save_data(X, Y, data, output_dir, test_size=0.3, val_size=0.15):
+    """
+    Split data into train, validation, and test sets and save as TSV files.
+    Args:
+        X: Input features.
+        Y: Labels.
+        data: Original dataframe with all columns.
+        output_dir: Directory to save splits.
+        test_size: Fraction of data to use for testing.
+        val_size: Fraction of training data to use for validation.
+    Returns:
+        Split datasets: (X_train, X_val, X_test, y_train, y_val, y_test)
+    """
+    # Check if splits already exist
+    train_file = os.path.join(output_dir, 'train.tsv')
+    val_file = os.path.join(output_dir, 'val.tsv')
+    test_file = os.path.join(output_dir, 'test.tsv')
+
+    if os.path.exists(train_file) and os.path.exists(val_file) and os.path.exists(test_file):
+        print("Train, validation, and test splits already exist. Loading splits.")
+        train_data = pd.read_csv(train_file, sep='\t')
+        val_data = pd.read_csv(val_file, sep='\t')
+        test_data = pd.read_csv(test_file, sep='\t')
+
+        train_data['embed'] = train_data['embed'].apply(json.loads)
+        val_data['embed'] = val_data['embed'].apply(json.loads)
+        test_data['embed'] = test_data['embed'].apply(json.loads)
+
+
+        return (
+            np.array(train_data['embed'].tolist()),
+            np.array(val_data['embed'].tolist()),
+            np.array(test_data['embed'].tolist()),
+            train_data['label'], val_data['label'], test_data['label']
+        )
+
+    print("Creating new train, validation, and test splits.")
+
+    if 'embed' in data.columns:
+        print("Warning: Overwriting existing 'embed' column in data.")
+    data['embed'] = [json.dumps([int(element) for element in row]) for row in X]
+
+
+    # Split into train and test
+    X_train, X_temp, y_train, y_temp, data_train, data_temp = train_test_split(
+        X, Y, data, test_size=test_size, random_state=42
+    )
+    # Split temp into validation and test
+    X_val, X_test, y_val, y_test, data_val, data_test = train_test_split(
+        X_temp, y_temp, data_temp, test_size=0.5, random_state=42
+    )
+
+
+
+    # Save splits
+    data_train.to_csv(train_file, sep='\t', index=False)
+    data_val.to_csv(val_file, sep='\t', index=False)
+    data_test.to_csv(test_file, sep='\t', index=False)
+
+    return X_train, X_val, X_test, y_train, y_val, y_test
+
+
+def plot_training_history(history, output_path):
+    """
+    Plots training and validation loss over epochs.
+    Args:
+        history: Keras History object.
+        output_path: Path to save the plot image.
+    """
+    # Extract loss values
+    train_loss = history.history['loss']
+    val_loss = history.history['val_loss']
+    epochs = range(1, len(train_loss) + 1)
+
+    # Create the plot
+    plt.figure()
+    plt.plot(epochs, train_loss, label='Training Loss')
+    plt.plot(epochs, val_loss, label='Validation Loss')
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss')
+    plt.title('Training and Validation Loss')
+    plt.legend()
+
+    # Save the plot
+    plt.savefig(output_path)
+    plt.close()  # Close the plot to avoid display during batch runs
+
 
 # Define F1 metric callback
 class F1Metric(Callback):
@@ -102,10 +197,11 @@ def main(embedder_path, csv_file, emod):
     max_length = 40  # Adjust this as needed
     X_padded, tokenizer, embedding_matrix = align_tokenizer_with_embeddings(X, embedder, max_vocab_size, max_length, dim)
 
-    # Split into train-validation-test sets
-    X_train, X_temp, y_train, y_temp = train_test_split(X_padded, Y, test_size=0.3, random_state=42)
-    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=42)
-
+    # Create train, validation, and test splits
+    output_dir = os.path.dirname(csv_file)
+    X_train, X_val, X_test, y_train, y_val, y_test = split_and_save_data(
+        X_padded, Y, data, output_dir
+    )
     # Define the embedding layer
     embedding_layer = Embedding(
         input_dim=embedding_matrix.shape[0],
@@ -120,7 +216,7 @@ def main(embedder_path, csv_file, emod):
         embedding_layer,
         Bidirectional(GRU(units=200, kernel_initializer="glorot_uniform")),
         Dropout(0.2),
-        Dense(1, activation='sigmoid')
+        Dense(1, activation='sigmoid',kernel_regularizer=l2(0.01))
     ])
 
     # Compile the model
@@ -143,9 +239,9 @@ def main(embedder_path, csv_file, emod):
     class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
     class_weights = dict(enumerate(class_weights))
 
-    model.fit(
-        X_train[:100], y_train[:100],
-        # X_train, y_train,
+    history = model.fit(
+        # X_train[:100], y_train[:100],
+        X_train, y_train,
         batch_size=64,
         epochs=10,
         validation_data=(X_val, y_val),
@@ -158,6 +254,10 @@ def main(embedder_path, csv_file, emod):
     macro_f1 = f1_score(y_test, y_pred, average='macro')
 
     print(f"Macro-F1 Score: {macro_f1:.4f}")
+
+    # Plot training history
+    plot_training_history(history, f'models/{emod}_training_loss_plot.png')
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train a model with pre-trained embeddings")

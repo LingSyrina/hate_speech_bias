@@ -1,22 +1,54 @@
 import string
-
+import requests
+import os
 import numpy as np
 import gensim
 from gensim.models.keyedvectors import Word2VecKeyedVectors
 
 from biasOps import project_onto_subspace
 
+import requests
+import os
+
 def load_legacy_w2v(w2v_file, dim=50):
+    """
+    Load word vectors from a legacy Word2Vec format file. Supports both local files and URLs.
+
+    Args:
+        w2v_file (str): Path to the .w2v file or a URL.
+        dim (int): Expected dimensionality of word vectors.
+
+    Returns:
+        dict: A dictionary of word vectors.
+        int: The dimensionality of the vectors.
+    """
+    # Check if the input is a URL
+    if w2v_file.startswith("http://") or w2v_file.startswith("https://"):
+        print(f"Downloading embeddings from {w2v_file}...")
+        response = requests.get(w2v_file, stream=True)
+        response.raise_for_status()  # Raise an error for bad status codes
+        temp_file = "temp_embedding.w2v"
+        with open(temp_file, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        w2v_file = temp_file  # Use the downloaded file for loading
+
     vectors = {}
-    with open(w2v_file, 'r') as f:
-        for line in f:
-            vect = line.strip().rsplit()
-            word = vect[0]
-            vect = np.array([float(x) for x in vect[1:]])
-            if(dim == len(vect)):
-                vectors[word] = vect
+    try:
+        with open(w2v_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                vect = line.strip().rsplit()
+                word = vect[0]
+                vect = np.array([float(x) for x in vect[1:]])
+                if dim == len(vect):  # Ensure vector dimensionality matches
+                    vectors[word] = vect
+    finally:
+        # Clean up the temporary file if a URL was used
+        if 'temp_file' in locals() and os.path.exists(temp_file):
+            os.remove(temp_file)
 
     return vectors, dim
+
 
 def load_legacy_w2v_as_keyvecs(w2v_file, dim=50):
     vectors = None
@@ -37,17 +69,26 @@ def load_legacy_w2v_as_keyvecs(w2v_file, dim=50):
     return vectors
 
 def convert_legacy_to_keyvec(legacy_w2v):
-    dim = len(legacy_w2v[legacy_w2v.keys()[0]])
-    vectors = Word2VecKeyedVectors(dim)
+    if not legacy_w2v:  # Check if the dictionary is empty
+        raise ValueError("The word vectors dictionary is empty. Please check the input file.")
+    
+    # Convert the keys to a list to make them indexable
+    keys = list(legacy_w2v.keys())
+    dim = len(legacy_w2v[keys[0]])  # Get the dimensionality of the first vector
+    
+    print(f"Loaded word vectors: {legacy_w2v}")
+    print(f"Number of vectors: {len(legacy_w2v)}")
 
+
+    vectors = Word2VecKeyedVectors(dim)
     ws = []
     vs = []
 
     for word, vect in legacy_w2v.items():
         ws.append(word)
         vs.append(vect)
-        assert(len(vect) == dim)
-    vectors.add(ws, vs, replace=True)
+        assert(len(vect) == dim)  # Ensure vector dimensionality is consistent
+    vectors.add_vectors(ws, vs, replace=True)
     return vectors
 
 def load_w2v(w2v_file, binary=True, limit=None):

@@ -36,7 +36,7 @@ def load_hf_embeddings(dataset_name):
     local_path = dataset.info.download_urls["gender_GLV1_role_biasedEmbeddingsOut.w2v"]
 
     # Use your existing function to load embeddings
-    word_vectors, embedding_dim = load_legacy_w2v(local_path)
+    word_vectors, embedding_dim = load_legacy_w2v(local_path, dim=300)
     return word_vectors, embedding_dim
     
 defSets = load_def_sets(args.vocabPath)
@@ -73,11 +73,14 @@ print(f"Negative Words: {negative_words[:20]}...")
 print("Loading embeddings from {}".format(args.embeddingPath))
 
 if args.embeddingPath.startswith("LingSyrina"):
-    word_vectors, embedding_dim = load_hf_embeddings(args.embeddingPath)
+    word_vectors, embedding_dim = load_hf_embeddings(args.embeddingPath, dim=300)
 else:
-    word_vectors, embedding_dim = load_legacy_w2v(args.embeddingPath)
+    word_vectors, embedding_dim = load_legacy_w2v(args.embeddingPath, dim=300)
     
 word_vectors = convert_legacy_to_keyvec(word_vectors)
+
+print(f"Loaded {len(word_vectors)} vectors.")
+print(f"Sample vector: {list(word_vectors.items())[:1]}")
 
 print("Pruning Word Vectors... Starting with", len(word_vectors))
 word_vectors = pruneWordVecs(word_vectors)

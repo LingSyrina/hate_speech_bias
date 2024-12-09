@@ -34,19 +34,36 @@ def load_legacy_w2v(w2v_file, dim=50):
         w2v_file = temp_file  # Use the downloaded file for loading
 
     vectors = {}
+    inferred_dim = None
     try:
         with open(w2v_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                vect = line.strip().rsplit()
-                word = vect[0]
-                vect = np.array([float(x) for x in vect[1:]])
-                if dim == len(vect):  # Ensure vector dimensionality matches
+            for line_no, line in enumerate(f):
+                parts = line.strip().split()
+                if not parts:
+                    continue
+                if inferred_dim is None:
+                    inferred_dim = len(parts) - 1
+                    if dim is None:
+                        dim = inferred_dim
+                    print(f"Inferred dimensionality: {dim}")
+                if len(parts) - 1 != dim:
+                    print(f"Skipping line {line_no + 1}: Dimensionality mismatch.")
+                    continue
+                    
+                word = parts[0]
+                try:
+                    vect = np.array([float(x) for x in parts[1:]])
                     vectors[word] = vect
-    finally:
-        # Clean up the temporary file if a URL was used
-        if 'temp_file' in locals() and os.path.exists(temp_file):
-            os.remove(temp_file)
+                except ValueError:
+                    print(f"Skipping line {line_no + 1}: Non-numeric values in vector.")
+    except Exception as e:
+        print(f"Error reading embeddings: {e}")
 
+    # Validate that vectors are loaded
+    if not vectors:
+        raise ValueError(f"No valid vectors found in the file: {w2v_file}")
+
+    print(f"Loaded {len(vectors)} word vectors with dimension {dim}.")
     return vectors, dim
 
 
